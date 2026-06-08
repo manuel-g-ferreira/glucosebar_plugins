@@ -1,0 +1,110 @@
+# Reusable plugin build matrix (MockCGM, LibreLink, Nightscout × macOS/Windows/Linux).
+# Called by plugins.yml and release.yml.
+
+name: Build plugins
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: Package .glucoseplugin after build
+        type: boolean
+        default: false
+      upload_artifacts:
+        description: Upload build outputs as workflow artifacts
+        type: boolean
+        default: false
+      artifact_prefix:
+        description: Prefix for artifact names (release builds)
+        type: string
+        default: ""
+      version:
+        description: Release version (required when package and upload_artifacts are true)
+        type: string
+        default: ""
+
+jobs:
+  build:
+    name: ${{ matrix.plugin }} (${{ matrix.os }})
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [MockCGM, LibreLink, Nightscout]
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/dart-setup
+
+      - name: Build plugin binary
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.package }}" = "true" ]; then
+            dart run tool/glucose_plugin.dart build "plugins/${{ matrix.plugin }}"
+          else
+            dart run tool/glucose_plugin.dart build --no-package "plugins/${{ matrix.plugin }}"
+          fi
+
+      - name: Stage release package
+        if: inputs.package && inputs.upload_artifacts
+        run: |
+          set -euo pipefail
+          if [ -z "${{ inputs.version }}" ]; then
+            echo "version input is required for release packaging" >&2
+            exit 1
+          fi
+          PLUGIN="${{ matrix.plugin }}"
+          VERSION="${{ inputs.version }}"
+          ID="$(python3 -c "import json; print(json.load(open('plugins/$PLUGIN/plugin.json'))['identifier'])")"
+          mkdir -p release-packages
+          case "${{ runner.os }}" in
+            macOS) PLATFORM="macos" ;;
+            Windows) PLATFORM="windows" ;;
+            Linux) PLATFORM="linux" ;;
+            *) echo "Unknown runner OS: ${{ runner.os }}" >&2; exit 1 ;;
+          esac
+          cp "plugins/$PLUGIN/dist/${ID}.glucoseplugin" \
+            "release-packages/GlucoseBarPlugins-${VERSION}-${ID}-${PLATFORM}.glucoseplugin"
+
+      - name: Upload plugin binary
+        if: inputs.upload_artifacts && !inputs.package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.plugin }}-${{ runner.os }}
+          path: plugins/${{ matrix.plugin }}/bin/*/
+
+      - name: Upload release package
+        if: inputs.upload_artifacts && inputs.package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.plugin }}-${{ runner.os }}
+          path: release-packages/GlucoseBarPlugins-*.glucoseplugin
+
+  protocol-smoke:
+    name: Protocol smoke (ubuntu)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/dart-setup
+
+      - name: Build all plugins
+        run: |
+          set -euo pipefail
+          for plugin in MockCGM LibreLink Nightscout; do
+            dart run tool/glucose_plugin.dart build --no-package "plugins/$plugin"
+          done
+
+      - name: getPluginInfo smoke
+        run: |
+          set -euo pipefail
+          echo '{"command":"getPluginInfo"}' | plugins/MockCGM/bin/linux-x64/mock-cgm | head -1 | grep -q '"success":true'
+          echo '{"command":"getPluginInfo"}' | plugins/LibreLink/bin/linux-x64/librelink-plugin | head -1 | grep -q '"librelink"'
+          echo '{"command":"getPluginInfo"}' | plugins/Nightscout/bin/linux-x64/nightscout-plugin | head -1 | grep -q '"nightscout"'

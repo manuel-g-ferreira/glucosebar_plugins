@@ -1,0 +1,22 @@
+# Reusable quality gate — formatting and tests.
+# Called by plugins.yml and release.yml.
+
+name: Quality
+
+on:
+  workflow_call:
+
+jobs:
+  checks:
+    name: Quality checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/dart-setup
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Run unit tests
+        run: dart test
