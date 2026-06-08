@@ -61,10 +61,11 @@ ArgParser _prepareParser() {
 }
 
 ArgParser _changelogParser() {
-  return ArgParser()..addCommand(
-    'extract',
-    ArgParser()..addOption('file', defaultsTo: 'CHANGELOG.md'),
-  );
+  return ArgParser()
+    ..addCommand(
+      'extract',
+      ArgParser()..addOption('file', defaultsTo: 'CHANGELOG.md'),
+    );
 }
 
 ArgParser _publishParser() {

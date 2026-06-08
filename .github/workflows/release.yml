@@ -76,12 +76,12 @@ jobs:
           set -euo pipefail
           dart run tool/release.dart changelog extract "${{ steps.ver.outputs.version }}" | head -1 >/dev/null
 
-  quality:
+  ci-checks:
     needs: metadata
-    uses: ./.github/workflows/quality.yml
+    uses: ./.github/workflows/ci-checks.yml
 
   build:
-    needs: [metadata, quality]
+    needs: [metadata, ci-checks]
     uses: ./.github/workflows/build-plugins.yml
     with:
       package: true
@@ -108,19 +108,10 @@ jobs:
           merge-multiple: true
 
       - name: Stage release assets
-        run: |
-          set -euo pipefail
-          dart run tool/release.dart publish stage --dist dist --output release
+        run: dart run tool/release.dart publish stage --dist dist --output release
 
-      - name: Read release notes from CHANGELOG
-        id: notes
-        run: |
-          set -euo pipefail
-          {
-            echo 'body<<EOF'
-            dart run tool/release.dart changelog extract "${{ needs.metadata.outputs.version }}"
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
+      - name: Write release notes
+        run: dart run tool/release.dart changelog extract "${{ needs.metadata.outputs.version }}" > release-notes.md
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
@@ -128,7 +119,7 @@ jobs:
           tag_name: ${{ needs.metadata.outputs.tag }}
           prerelease: ${{ needs.metadata.outputs.prerelease == 'true' }}
           generate_release_notes: false
-          body: ${{ steps.notes.outputs.body }}
+          body_path: release-notes.md
           files: release/**
           name: GlucoseBar Plugins ${{ needs.metadata.outputs.version }}
         env:

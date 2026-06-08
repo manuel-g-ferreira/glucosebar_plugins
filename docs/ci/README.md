@@ -6,12 +6,12 @@ Modular layout — shared jobs live in reusable workflows; entry points only wir
 
 | Workflow | When it runs | Role |
 |----------|----------------|------|
-| [plugins.yml](../../.github/workflows/plugins.yml) | PR and push to `main` | Quality checks + cross-platform plugin builds |
+| [plugins.yml](../../.github/workflows/plugins.yml) | PR and push to `main` (path filters) | CI checks + plugin builds + integration smoke |
 | [prepare-release.yml](../../.github/workflows/prepare-release.yml) | Manual (**Run workflow**) | Opens a `release/*` PR (version + changelog, no tag) |
 | [finish-release.yml](../../.github/workflows/finish-release.yml) | `release/*` PR merged to `main` | Tags merge commit, runs **Release** |
-| [release.yml](../../.github/workflows/release.yml) | Chained from Finish release, or manual | Quality + plugin builds + GitHub Release |
-| [quality.yml](../../.github/workflows/quality.yml) | *(reusable only)* | Formatting and unit tests |
-| [build-plugins.yml](../../.github/workflows/build-plugins.yml) | *(reusable only)* | MockCGM / LibreLink / Nightscout build matrix + protocol smoke |
+| [release.yml](../../.github/workflows/release.yml) | Chained from Finish release, or manual | CI checks + plugin builds + GitHub Release |
+| [ci-checks.yml](../../.github/workflows/ci-checks.yml) | *(reusable only)* | Format and unit tests |
+| [build-plugins.yml](../../.github/workflows/build-plugins.yml) | *(reusable only)* | Cross-platform plugin builds + integration smoke |
 
 Desktop app CI and releases run in [glucosebar](https://github.com/manuel-g-ferreira/glucosebar).
 
@@ -39,7 +39,7 @@ Desktop app CI and releases run in [glucosebar](https://github.com/manuel-g-ferr
 After merge, **Finish release** automatically:
 
 - Creates and pushes tag `vX.Y.Z`
-- Runs **Release** (quality → plugin builds → `.glucoseplugin` assets → GitHub Release)
+- Runs **Release** (CI checks → plugin builds → `.glucoseplugin` assets → GitHub Release)
 
 No direct push to `main` from Actions.
 
@@ -62,12 +62,16 @@ If **Release** fails after the tag exists: **Actions** → **Release** → **Run
 
 ## Local CI (before push)
 
-```bash
-chmod +x tool/ci_local.sh   # once
-./tool/ci_local.sh
-```
+Run the same commands as the PR workflow jobs:
 
-Covers the same steps as the **Quality checks** CI job plus local protocol smoke (when supported on your OS).
+```bash
+dart format --output=none --set-exit-if-changed .
+dart test
+dart run tool/glucose_plugin.dart build --no-package plugins/MockCGM
+dart run tool/glucose_plugin.dart build --no-package plugins/LibreLink
+dart run tool/glucose_plugin.dart build --no-package plugins/Nightscout
+echo '{"command":"getPluginInfo"}' | plugins/MockCGM/bin/linux-x64/mock-cgm | head -1 | grep -q '"success":true'
+```
 
 ## Release tooling
 
@@ -82,15 +86,18 @@ dart run tool/release.dart publish stage --dist dist --output release
 
 Run `dart pub get` (or CI **dart-setup**) before `dart run tool/release.dart`.
 
-## CI jobs
+## CI jobs (pull requests)
 
-| Job | Runner | Steps |
-|-----|--------|-------|
-| **Quality checks** | `ubuntu-latest` | format → unit tests |
-| **Plugin build (macOS / Windows / Linux)** | matrix | compile plugin binaries |
-| **Protocol smoke** | `ubuntu-latest` | build all plugins → `getPluginInfo` smoke |
+Each check appears separately on the PR:
 
-Release runs the same reusable jobs with packaging enabled, then publishes versioned `.glucoseplugin` assets on a GitHub Release.
+| Job | Runner | What it does |
+|-----|--------|--------------|
+| **Format** | `ubuntu-latest` | `dart format --set-exit-if-changed` |
+| **Unit tests** | `ubuntu-latest` | `dart test` |
+| **Build · {plugin} ({os})** | matrix | Compile plugin binary per platform |
+| **Integration (protocol smoke)** | `ubuntu-latest` | Build all plugins → pipe `getPluginInfo` |
+
+Release runs the same checks and builds, then packages `.glucoseplugin` assets on a GitHub Release.
 
 ## Version alignment check
 

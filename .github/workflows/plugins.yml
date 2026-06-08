@@ -11,7 +11,7 @@ on:
       - "lib/**"
       - "test/**"
       - ".github/workflows/plugins.yml"
-      - ".github/workflows/quality.yml"
+      - ".github/workflows/ci-checks.yml"
       - ".github/workflows/build-plugins.yml"
       - ".github/workflows/release.yml"
       - ".github/workflows/prepare-release.yml"
@@ -24,16 +24,16 @@ on:
       - "lib/**"
       - "test/**"
       - ".github/workflows/plugins.yml"
-      - ".github/workflows/quality.yml"
+      - ".github/workflows/ci-checks.yml"
       - ".github/workflows/build-plugins.yml"
       - ".github/workflows/release.yml"
       - ".github/workflows/prepare-release.yml"
       - ".github/actions/dart-setup/**"
 
 jobs:
-  quality:
-    uses: ./.github/workflows/quality.yml
+  checks:
+    uses: ./.github/workflows/ci-checks.yml
 
   build:
-    needs: quality
+    needs: checks
     uses: ./.github/workflows/build-plugins.yml

@@ -50,10 +50,7 @@ Or drag the `.glucoseplugin` file into Settings → Plugins in the app.
 
 ## Local CI
 
-```bash
-chmod +x tool/ci_local.sh   # once
-./tool/ci_local.sh
-```
+See [docs/ci/README.md](docs/ci/README.md) — run the same `dart format`, `dart test`, and plugin build steps as the PR workflow.
 
 ## Docs
 

@@ -25,10 +25,7 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.plugin }} (${{ matrix.os }})
-    defaults:
-      run:
-        shell: bash
+    name: Build · ${{ matrix.plugin }} (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -40,33 +37,24 @@ jobs:
 
       - uses: ./.github/actions/dart-setup
 
+      - name: Build plugin binary (with package)
+        if: inputs.package
+        run: dart run tool/glucose_plugin.dart build "plugins/${{ matrix.plugin }}"
+
       - name: Build plugin binary
-        run: |
-          set -euo pipefail
-          if [ "${{ inputs.package }}" = "true" ]; then
-            dart run tool/glucose_plugin.dart build "plugins/${{ matrix.plugin }}"
-          else
-            dart run tool/glucose_plugin.dart build --no-package "plugins/${{ matrix.plugin }}"
-          fi
+        if: ${{ !inputs.package }}
+        run: dart run tool/glucose_plugin.dart build --no-package "plugins/${{ matrix.plugin }}"
 
       - name: Stage release package
         if: inputs.package && inputs.upload_artifacts
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+          VERSION: ${{ inputs.version }}
+          PLATFORM: ${{ runner.os == 'macOS' && 'macos' || (runner.os == 'Windows' && 'windows' || 'linux') }}
         run: |
-          set -euo pipefail
-          if [ -z "${{ inputs.version }}" ]; then
-            echo "version input is required for release packaging" >&2
-            exit 1
-          fi
-          PLUGIN="${{ matrix.plugin }}"
-          VERSION="${{ inputs.version }}"
+          test -n "$VERSION"
           ID="$(python3 -c "import json; print(json.load(open('plugins/$PLUGIN/plugin.json'))['identifier'])")"
           mkdir -p release-packages
-          case "${{ runner.os }}" in
-            macOS) PLATFORM="macos" ;;
-            Windows) PLATFORM="windows" ;;
-            Linux) PLATFORM="linux" ;;
-            *) echo "Unknown runner OS: ${{ runner.os }}" >&2; exit 1 ;;
-          esac
           cp "plugins/$PLUGIN/dist/${ID}.glucoseplugin" \
             "release-packages/GlucoseBarPlugins-${VERSION}-${ID}-${PLATFORM}.glucoseplugin"
 
@@ -84,27 +72,28 @@ jobs:
           name: ${{ inputs.artifact_prefix }}-${{ matrix.plugin }}-${{ runner.os }}
           path: release-packages/GlucoseBarPlugins-*.glucoseplugin
 
-  protocol-smoke:
-    name: Protocol smoke (ubuntu)
+  integration:
+    name: Integration (protocol smoke)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/dart-setup
 
-      - name: Build all plugins
-        run: |
-          set -euo pipefail
-          for plugin in MockCGM LibreLink Nightscout; do
-            dart run tool/glucose_plugin.dart build --no-package "plugins/$plugin"
-          done
+      - name: Build MockCGM
+        run: dart run tool/glucose_plugin.dart build --no-package plugins/MockCGM
 
-      - name: getPluginInfo smoke
-        run: |
-          set -euo pipefail
-          echo '{"command":"getPluginInfo"}' | plugins/MockCGM/bin/linux-x64/mock-cgm | head -1 | grep -q '"success":true'
-          echo '{"command":"getPluginInfo"}' | plugins/LibreLink/bin/linux-x64/librelink-plugin | head -1 | grep -q '"librelink"'
-          echo '{"command":"getPluginInfo"}' | plugins/Nightscout/bin/linux-x64/nightscout-plugin | head -1 | grep -q '"nightscout"'
+      - name: Build LibreLink
+        run: dart run tool/glucose_plugin.dart build --no-package plugins/LibreLink
+
+      - name: Build Nightscout
+        run: dart run tool/glucose_plugin.dart build --no-package plugins/Nightscout
+
+      - name: MockCGM getPluginInfo
+        run: echo '{"command":"getPluginInfo"}' | plugins/MockCGM/bin/linux-x64/mock-cgm | head -1 | grep -q '"success":true'
+
+      - name: LibreLink getPluginInfo
+        run: echo '{"command":"getPluginInfo"}' | plugins/LibreLink/bin/linux-x64/librelink-plugin | head -1 | grep -q '"librelink"'
+
+      - name: Nightscout getPluginInfo
+        run: echo '{"command":"getPluginInfo"}' | plugins/Nightscout/bin/linux-x64/nightscout-plugin | head -1 | grep -q '"nightscout"'
